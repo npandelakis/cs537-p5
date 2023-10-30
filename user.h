@@ -1,3 +1,7 @@
+#include <stddef.h>
+typedef long int off_t;
+
+
 struct stat;
 struct rtcdate;
 
@@ -23,8 +27,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
-int munmap(void *addr, size_t length)
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+int munmap(void *addr, size_t length);
 
 // ulib.c
 int stat(const char*, struct stat*);
