@@ -6,9 +6,23 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
+#include "stddef.h"
+#include "sys/types.h"
+
+#define MAX_REGIONS 10
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
+
+//Define structure to represent an allocated memory region
+struct MemoryRegion {
+  void *start;
+  size_t size;
+};
+
+//Maintain a list of allocated memory regions
+struct MemoryRegion allocatedRegions[MAX_REGIONS];
+int numAllocatedRegions = 0;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -384,6 +398,50 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   }
   return 0;
 }
+
+int memoryRegionAvailable(void *addr, size_t length){
+  for (int i = 0; i < numAllocatedRegions; i ++){
+    //check if beginning of requested address is within an allocated region
+    if (addr >=allocatedRegions[i].start && addr < allocatedRegions[i].start + allocatedRegions[i].size) {
+      return 0; //not available
+    }
+    //check if end of requested address is within an allocated region
+    if (addr + length > allocatedRegions[i].start && addr +length <= allocatedRegions[i].start + allocatedRegions[i].size) {
+      return 0; //not availabe
+    }
+  }
+  return 1;
+}
+
+void addAllocatedRegion(void * addr, size_t length) {
+  if (numAllocatedRegions < MAX_REGIONS) {
+    allocatedRegions[numAllocatedRegions].start = addr;
+    allocatedRegions[numAllocatedRegions].size = length;
+    numAllocatedRegions++;
+  }
+}
+
+//implementation of mmap
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+  char * mem;
+  // Verify Page alignment
+  if ((uint) addr % PGSIZE != 0) {
+    return (void *)-1;
+  }
+  if (!memoryRegionAvailable(addr, length)){
+    return (void *)-1;
+  }
+  mem = kalloc(); //call kalloc to allocate memory
+  if(mem == 0){
+    cprintf("allocuvm out of memory\n");
+    //munmap(); //unmap memory TODO: implement munmap
+    return 0;
+  }
+  allocatedRegions[numAllocatedRegions].size = PGSIZE;
+  allocatedRegions[numAllocatedRegions].start = (void *)mem; // V2P
+  return mem;
+}
+
 
 //PAGEBREAK!
 // Blank page.

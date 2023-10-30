@@ -1,5 +1,5 @@
-#include <stddef.h>
-typedef long int off_t;
+#include "stddef.h"
+#include "sys/types.h"
 
 
 struct stat;
