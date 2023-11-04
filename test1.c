@@ -2,35 +2,83 @@
 #include "user.h"
 #include "stat.h"
 #include "mmap.h"
+#include "fcntl.h"
+
+int my_strcmp(const char *a, const char *b, int n) {
+    printf(1,"here2\n");
+    for (int i = 0; i < n; i++) {
+        printf(1,"i: %d\n", i);
+        if (a[i] != b[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 int main() {
-    uint addr = 0;
-    int len = 4000;
+    char *filename = "test_file.txt";
+    int len = 100;
     int prot = PROT_READ | PROT_WRITE;
-    int flags = MAP_ANON | MAP_SHARED;
-    int fd = -1;
+    int flags = MAP_SHARED;
+    char buff[len];
 
-    /* mmap anon memory */
-    void *mem = mmap((void *)addr, len, prot, flags, fd, 0);
+    /* Open a file */
+    int fd = open(filename, O_CREATE | O_RDWR);
+    if (fd < 0) {
+        printf(1, "Error opening file\n");
+        goto failed;
+    }
+
+    /* Write some data to the file */
+    for (int i = 0; i < len; i++) {
+        buff[i] = (char)(i % 256);
+    }
+    if (write(fd, buff, len) != len) {
+        printf(1, "Error: Write to file FAILED\n");
+        goto failed;
+    }
+    close(fd);
+
+    fd = open(filename, O_CREATE | O_RDWR);
+
+    /* mmap the file */
+    void *mem = mmap(0, len, prot, flags, fd, 0);
     if (mem == (void *)-1) {
-            printf(1, "1\n");
-            goto failed;
+        printf(1, "mmap FAILED\n");
+        goto failed;
     }
 
-    /* Modify something */
-    char *memchar = (char*) mem;
-    memchar[0] = 'a'; memchar[1] = 'a';
-
-    /* Clean and return */
-    int ret = munmap(mem, len);
-    if (ret < 0) {
-            printf(1, "2\n");
+    /* Fork */
+    int pid = fork();
+    if (pid == 0) {
+        /* Verify the child can read the same data */
+        printf(1,"here\n");
+        char *mem_buff = (char *)mem;
+        printf(1,"mystrcmp: \n");
+        if (my_strcmp(mem_buff, buff, len) != 0) {
+            printf(1, "Data mismatch in child\n");
             goto failed;
+        }
+    } else {
+        wait();
+        /* Clean and return */
+        printf(1,"munmap test\n");
+        int ret = munmap(mem, len);
+        if (ret < 0) {
+            printf(1, "munmap FAILED\n");
+            goto failed;
+        }
+
+        close(fd);
     }
+
+
+
 
 // success:
     printf(1, "MMAP\t SUCCESS\n");
     exit();
+
 failed:
     printf(1, "MMAP\t FAILED\n");
     exit();

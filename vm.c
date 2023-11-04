@@ -355,6 +355,89 @@ bad:
   return 0;
 }
 
+int
+copy_mmap_pgdir(pde_t *pgdir, struct mmap_area *mmapArea) {
+  pte_t *pte;
+  char *mem;
+  cprintf("copy mmap pgdir\n");
+  for(uint i=mmapArea->start_addr; i<mmapArea->end_addr; i+=PGSIZE) {
+    if((pte = walkpgdir(myproc()->pgdir, (void *)i,0)) == 0) {
+      panic("copy_mmap_pgdr: pte should exist");
+    }
+    if ((mmapArea->flags & MAP_SHARED) == MAP_SHARED) {
+      cprintf("map shared");
+      if(mappages(pgdir, (void*)i, PGSIZE, PTE_ADDR(*pte), PTE_W|PTE_U) < 0) {
+        panic("mappages shared");
+      }
+    } else {
+      cprintf("map shared");
+      if(!(*pte & PTE_P))
+      panic("copy_mmap_pgdr: page not present");
+      uint pa = PTE_ADDR(*pte);
+      uint flags = PTE_FLAGS(*pte);
+      if((mem = kalloc()) == 0) {
+        goto bad;
+      }
+      memmove(mem, (char*)P2V(pa), PGSIZE);
+      if(mappages(pgdir, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+        kfree(mem);
+        goto bad;
+      }
+      
+    }
+  }
+  bad:
+    freevm(pgdir);
+    return -1; 
+}
+
+// pde_t*
+// copyuvm(pde_t *pgdir, uint sz)
+// {
+//   pde_t *d;
+//   pte_t *pte;
+//   uint pa, i, flags;
+//   char *mem;
+
+//   if((d = setupkvm()) == 0)
+//     return 0;
+//   for(i = 0; i < sz; i += PGSIZE){
+//     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+//       panic("copyuvm: pte should exist");
+//     if(!(*pte & PTE_P))
+//       panic("copyuvm: page not present");
+//     pa = PTE_ADDR(*pte);
+//     flags = PTE_FLAGS(*pte);
+
+//     int mmap_index = getMemoryRegion(i,PGSIZE);
+//     cprintf("i: %p \n",(void *) i);
+//     if(mmap_index != -1) {
+//       cprintf("flags: %d\n",myproc()->mmap_list[mmap_index]->flags);
+//       mem = (void *)-1;
+//       if ((myproc()->mmap_list[mmap_index]->flags & MAP_SHARED) == MAP_SHARED) {
+//         cprintf("map shared\n");
+//         mem = P2V(pa);
+//       }
+//     } else {
+//       cprintf("map priv\n");
+//       if((mem = kalloc()) == 0)
+//         goto bad;
+//       memmove(mem, (char*)P2V(pa), PGSIZE);
+//     }
+    
+    
+//     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+//       kfree(mem);
+//       goto bad;
+//     }
+//   }
+//   return d;
+
+// bad:
+//   freevm(d);
+//   return 0;
+// }
+
 //PAGEBREAK!
 // Map user virtual address to kernel address.
 char*
@@ -399,7 +482,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 int memoryRegionAvailable(int addr, size_t length){
   struct proc *p = myproc();
   for (int i = 0; i < 32; i ++){
-    if (p->mmap_list[i] == NULL) {
+    if (p->mmap_list[i]->valid == 0) {
       continue;
     }
     //check if beginning of requested address is within an allocated region
@@ -412,6 +495,24 @@ int memoryRegionAvailable(int addr, size_t length){
     }
   }
   return 1;
+}
+
+int getMemoryRegion(int addr, size_t length) {
+  struct proc *p = myproc();
+  for (int i = 0; i < 32; i ++){
+    if (p->mmap_list[i]->valid == 0) {
+      continue;
+    }
+    //check if beginning of requested address is within an allocated region
+    if (addr >=p->mmap_list[i]->start_addr && addr < p->mmap_list[i]->end_addr) {
+      return i; 
+    }
+    // //check if end of requested address is within an allocated region
+    if (addr + length > p->mmap_list[i]->start_addr && addr + length <= p->mmap_list[i]->end_addr) {
+      return i; 
+    }
+  }
+  return -1;
 }
 
 char *kalloc_and_map(void *addr, uint length) {
@@ -519,12 +620,13 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   //search for an empty slot in mmap list
   int slot = -1;
   for (int i =0; i < 32; i++) {
-    if (p->mmap_list[i] == NULL) {
+    if (p->mmap_list[i]->valid != 1) {
       slot = i;
       break;
     }
   }
   //store mapped addresses in our mmap list
+  p->mmap_list[slot]->valid = 1;
   p->mmap_list[slot]->start_addr = u_addr;
   p->mmap_list[slot]->end_addr = u_addr + length;
   p->mmap_list[slot]->size = length;
@@ -604,7 +706,7 @@ int munmap(void *addr, size_t length) {
   }
   mmapArea->flags = 0;
   mmapArea->fd = 0;
-  p->mmap_list[i] = 0;
+  p->mmap_list[i]->valid = 0;
 
   return 0;
 }

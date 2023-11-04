@@ -61,6 +61,7 @@ struct proc {
 
 // Info for an mmap area
 typedef struct mmap_area {
+  int valid;
   uint start_addr;
   uint end_addr;
   int size;

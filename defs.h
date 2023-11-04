@@ -12,6 +12,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct mmap_area;
 
 // bio.c
 void            binit(void);
@@ -179,6 +180,7 @@ void            kvmalloc(void);
 pde_t*          setupkvm(void);
 char*           uva2ka(pde_t*, char*);
 int             allocuvm(pde_t*, uint, uint);
+int             copy_mmap_pgdir(pde_t *pgdir, struct mmap_area *mmapArea);
 int             deallocuvm(pde_t*, uint, uint);
 void            freevm(pde_t*);
 void            inituvm(pde_t*, char*, uint);
@@ -189,6 +191,7 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 int             memoryRegionAvailable(int addr, size_t length);
+int             getMemoryRegion(int addr, size_t length);
 void            addAllocatedRegion(void * addr, size_t length);
 char *          kalloc_and_map(void *addr, uint length);
 void *          mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
