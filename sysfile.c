@@ -460,8 +460,9 @@ sys_mmap(void)
       argint(2, &prot) < 0 ||
       argint(3, &flags) < 0 ||
       argint(4, &fd) < 0 ||
-      argint(5, (int *)&offset) < 0) { // Verify that this is ok to do as argint with off_t
-      cprintf("%p %d %d %d %d %d\n",addr,length,prot,flags,fd,(int *)offset);
+      argint(5, (int *)&offset) < 0) 
+      { // Verify that this is ok to do as argint with off_t
+        cprintf("%p %d %d %d %d %d\n",addr,length,prot,flags,fd,(int *)offset);
         return (void *)-1; //argment parsing failed
       }
 
@@ -472,5 +473,14 @@ sys_mmap(void)
 int
 sys_munmap(void)
 {
-  return 0;
+  uint addr;
+  size_t length;
+
+  if (argint(0, (void*)&addr) < 0 ||
+      argint(1, (int*)&length) < 0) 
+      {
+        return -1; //argment parsing failed
+      }
+
+  return munmap((void *)addr, length);
 }

@@ -394,17 +394,20 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   return 0;
 }
 
-int memoryRegionAvailable(void *addr, size_t length){
-  for (int i = 0; i < numAllocatedRegions; i ++){
+int memoryRegionAvailable(int addr, size_t length){
+  struct proc *p = myproc();
+  for (int i = 0; i < 32; i ++){
+    if (p->mmap_list[i] == NULL) {
+      continue;
+    }
     //check if beginning of requested address is within an allocated region
-    // if (addr >=allocatedRegions[i].start && addr < allocatedRegions[i].start + allocatedRegions[i].size) {
-    //   return 0; //not available
-    // }
+    if (addr >=p->mmap_list[i]->start_addr && addr < p->mmap_list[i]->end_addr) {
+      return 0; //not available
+    }
     // //check if end of requested address is within an allocated region
-    // if (addr + length > allocatedRegions[i].start && addr +length <= allocatedRegions[i].start + allocatedRegions[i].size) {
-    //   return 0; //not availabe
-    // }
-    return 1;
+    if (addr + length > p->mmap_list[i]->start_addr && addr + length <= p->mmap_list[i]->end_addr) {
+      return 0; //not availabe
+    }
   }
   return 1;
 }
@@ -419,36 +422,123 @@ void addAllocatedRegion(void * addr, size_t length) {
 
 //implementation of mmap
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+  struct proc *p = myproc();
   char * mem;
+  uint u_addr = (uint) addr;
+  
   // Verify Page alignment
-  if ((uint) addr % PGSIZE != 0) {
+  if (u_addr % PGSIZE != 0) {
     return (void *)-1;
   }
-  if (!memoryRegionAvailable(addr, length)){
+
+  // Check bounds
+  if(u_addr < MMAPBASE || u_addr >= KERNBASE) {
+    return (void *)-1;
+  }
+
+  if (!memoryRegionAvailable(u_addr, length)){
+    cprintf("memory region\n");
     return (void *)-1;
   }
 
   cprintf("%d\n",flags);
   if ((flags & MAP_FIXED)==8) {
-    cprintf("MAP_FIXED\n");
-    mem = kalloc();
+    mem = kalloc(); //call kalloc to allocate memory
+    if(mem == 0) {
+      kfree(mem);
+      cprintf("allocuvm out of memory\n");
+      return (void *)-1;
+    }
+    // clear existing data
+    memset(mem, 0, PGSIZE);
+
     cprintf("%p\n",mem);
-    mappages(myproc()->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U);
+
+    if (mappages(p->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+      kfree(mem);
+      cprintf("mappages\n");
+      return (void *)-1;
+    }
+    
+    //search for an empty slot in mmap list
+    int slot = -1;
+    for (int i =0; i < 32; i++) {
+      if (p->mmap_list[i] == NULL) {
+        slot = i;
+        break;
+      }
+    }
+    //store mapped addresses in our mmap list
+    p->mmap_list[slot]->start_addr = u_addr;
+    p->mmap_list[slot]->end_addr = u_addr + length;
+    p->mmap_list[slot]->flags = flags;
+    
     return addr;
   }
-
-  mem = kalloc(); //call kalloc to allocate memory
-  if(mem == 0){
-    cprintf("allocuvm out of memory\n");
-    //munmap(); //unmap memory TODO: implement munmap
-    return 0;
-  }
-
 
   // allocatedRegions[numAllocatedRegions].size = PGSIZE;
   // allocatedRegions[numAllocatedRegions].start = (void *)mem; // V2P
   return addr;
 }
+
+int munmap(void *addr, size_t length) {
+  struct proc *p = myproc();
+  uint u_addr = (uint) addr;
+
+  if (addr == NULL || length == 0){
+    cprintf("validation \n");
+    return -1; //invalid arguments
+  }
+
+  // Verify Page alignment
+  if (u_addr % PGSIZE != 0) {
+    cprintf("page alignment fail\n");
+    return -1;
+  }
+
+  struct mmap_area *mmapArea = (void *) -1;
+  int i;
+  for (i=0; i<32; i++){
+    if (p->mmap_list[i]->start_addr == u_addr && 
+        p->mmap_list[i]->end_addr >= u_addr + length) {
+          mmapArea = p->mmap_list[i];
+          break;
+        }
+  }
+
+  if (mmapArea == (void *) -1) {
+    cprintf("mmapArea \n");
+    return -1;
+  }
+
+  //check flags and MAP_SHARED
+  if (mmapArea->flags & MAP_SHARED) {
+    //stuff
+  }
+  //remove mappings from page table
+  pte_t *pte;
+  for(int page_base = u_addr; page_base < u_addr + length; page_base += PGSIZE){
+    //more stuff - walk through page table entries in the page 
+    //starting from page_base and unmap addresses
+    pte = walkpgdir(p->pgdir, (void *) page_base, 0);
+    if (pte == 0) {
+      cprintf("pte\n");
+      return -1;
+    }
+    char *v = P2V(PTE_ADDR(*pte)); // Get the virtual address of the page
+    kfree(v);
+    *pte = 0;
+  }
+
+  //clear mmapArea and mmap_list of addr
+  mmapArea->start_addr = 0;
+  mmapArea->end_addr = 0;
+  mmapArea->flags = 0;
+  p->mmap_list[i] = 0;
+
+  return 0;
+}
+
 
 
 //PAGEBREAK!

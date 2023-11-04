@@ -60,6 +60,14 @@ struct proc {
 
 // Info for an mmap area
 typedef struct mmap_area {
-  int start_addr;
+  uint start_addr;
+  uint end_addr;
   int flags;
 } mmap_area;
+
+// Mmap free list for virtual pages for user proc - linked list
+// Keep track of:
+//    Virtual Address
+//    Next
+// On mmap, remove virtual address from free list, repoint previous free to the next free
+// On unmap, re-add addresses to the front

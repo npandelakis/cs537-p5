@@ -188,9 +188,9 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
-int             memoryRegionAvailable(void *addr, size_t length);
+int             memoryRegionAvailable(int addr, size_t length);
 void            addAllocatedRegion(void * addr, size_t length);
 void *          mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
-
+int             munmap(void *addr, size_t length);
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
