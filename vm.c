@@ -8,20 +8,15 @@
 #include "elf.h"
 #include "stddef.h"
 #include "sys/types.h"
+#include "mmap.h"
 
 #define MAX_REGIONS 10
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
-//Define structure to represent an allocated memory region
-struct MemoryRegion {
-  void *start;
-  size_t size;
-};
-
 //Maintain a list of allocated memory regions
-struct MemoryRegion allocatedRegions[MAX_REGIONS];
+//struct MemoryRegion allocatedRegions[MAX_REGIONS];
 int numAllocatedRegions = 0;
 
 // Set up CPU's kernel segment descriptors.
@@ -402,21 +397,22 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 int memoryRegionAvailable(void *addr, size_t length){
   for (int i = 0; i < numAllocatedRegions; i ++){
     //check if beginning of requested address is within an allocated region
-    if (addr >=allocatedRegions[i].start && addr < allocatedRegions[i].start + allocatedRegions[i].size) {
-      return 0; //not available
-    }
-    //check if end of requested address is within an allocated region
-    if (addr + length > allocatedRegions[i].start && addr +length <= allocatedRegions[i].start + allocatedRegions[i].size) {
-      return 0; //not availabe
-    }
+    // if (addr >=allocatedRegions[i].start && addr < allocatedRegions[i].start + allocatedRegions[i].size) {
+    //   return 0; //not available
+    // }
+    // //check if end of requested address is within an allocated region
+    // if (addr + length > allocatedRegions[i].start && addr +length <= allocatedRegions[i].start + allocatedRegions[i].size) {
+    //   return 0; //not availabe
+    // }
+    return 1;
   }
   return 1;
 }
 
 void addAllocatedRegion(void * addr, size_t length) {
   if (numAllocatedRegions < MAX_REGIONS) {
-    allocatedRegions[numAllocatedRegions].start = addr;
-    allocatedRegions[numAllocatedRegions].size = length;
+    // allocatedRegions[numAllocatedRegions].start = addr;
+    // allocatedRegions[numAllocatedRegions].size = length;
     numAllocatedRegions++;
   }
 }
@@ -431,15 +427,27 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   if (!memoryRegionAvailable(addr, length)){
     return (void *)-1;
   }
+
+  cprintf("%d\n",flags);
+  if ((flags & MAP_FIXED)==8) {
+    cprintf("MAP_FIXED\n");
+    mem = kalloc();
+    cprintf("%p\n",mem);
+    mappages(myproc()->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U);
+    return addr;
+  }
+
   mem = kalloc(); //call kalloc to allocate memory
   if(mem == 0){
     cprintf("allocuvm out of memory\n");
     //munmap(); //unmap memory TODO: implement munmap
     return 0;
   }
-  allocatedRegions[numAllocatedRegions].size = PGSIZE;
-  allocatedRegions[numAllocatedRegions].start = (void *)mem; // V2P
-  return mem;
+
+
+  // allocatedRegions[numAllocatedRegions].size = PGSIZE;
+  // allocatedRegions[numAllocatedRegions].start = (void *)mem; // V2P
+  return addr;
 }
 
 

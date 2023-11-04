@@ -448,25 +448,25 @@ sys_pipe(void)
 void*
 sys_mmap(void)
 {
-  void *addr;
+  uint addr;
   size_t length;
   int prot;
   int flags;
   int fd;
   off_t offset;
 
-  if (argptr(0, (void*)&addr, sizeof(void *)) < 0 ||
+  if (argint(0, (void*)&addr) < 0 ||
       argint(1, (int*)&length) < 0 ||
       argint(2, &prot) < 0 ||
       argint(3, &flags) < 0 ||
       argint(4, &fd) < 0 ||
       argint(5, (int *)&offset) < 0) { // Verify that this is ok to do as argint with off_t
+      cprintf("%p %d %d %d %d %d\n",addr,length,prot,flags,fd,(int *)offset);
         return (void *)-1; //argment parsing failed
       }
 
   //TODO: Fix bad cast with offset above;
-
-  return mmap(addr, length, prot, flags, fd, offset);
+  return mmap((void *)addr, length, prot, flags, fd, offset);
 }
 
 int
