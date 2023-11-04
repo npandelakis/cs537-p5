@@ -15,10 +15,6 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
-//Maintain a list of allocated memory regions
-//struct MemoryRegion allocatedRegions[MAX_REGIONS];
-int numAllocatedRegions = 0;
-
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -412,13 +408,6 @@ int memoryRegionAvailable(int addr, size_t length){
   return 1;
 }
 
-void addAllocatedRegion(void * addr, size_t length) {
-  if (numAllocatedRegions < MAX_REGIONS) {
-    // allocatedRegions[numAllocatedRegions].start = addr;
-    // allocatedRegions[numAllocatedRegions].size = length;
-    numAllocatedRegions++;
-  }
-}
 
 //implementation of mmap
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
@@ -431,8 +420,33 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     return (void *)-1;
   }
 
+  cprintf("FLAGS: %d\n",flags);
+  if ((flags & MAP_FIXED) != 8) {
+    cprintf("flags and not fixed\n");
+    uint a = p->mmap_free_addr;
+    cprintf("mmap base: %p", (void *)a);
+
+    int found = 0;
+    for(; a < KERNBASE; a += PGSIZE){
+      if (memoryRegionAvailable(a, length)){
+        u_addr = a;
+        addr = (void *) a;
+        cprintf("u_addr: %d", u_addr);
+        found = 1;
+        break;
+      }   
+    }
+    if (!found) {
+      cprintf("No available free address\n");
+      return (void *) -1;
+    }
+    p->mmap_free_addr = u_addr + PGROUNDUP(length); //probably need to check that next VA is free
+  }
+
+  //Fixed case
   // Check bounds
   if(u_addr < MMAPBASE || u_addr >= KERNBASE) {
+    cprintf("bounds check\n");
     return (void *)-1;
   }
 
@@ -441,45 +455,39 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     return (void *)-1;
   }
 
-  cprintf("%d\n",flags);
-  if ((flags & MAP_FIXED)==8) {
-    mem = kalloc(); //call kalloc to allocate memory
-    if(mem == 0) {
-      kfree(mem);
-      cprintf("allocuvm out of memory\n");
-      return (void *)-1;
-    }
-    // clear existing data
-    memset(mem, 0, PGSIZE);
-
-    cprintf("%p\n",mem);
-
-    if (mappages(p->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
-      kfree(mem);
-      cprintf("mappages\n");
-      return (void *)-1;
-    }
-    
-    //search for an empty slot in mmap list
-    int slot = -1;
-    for (int i =0; i < 32; i++) {
-      if (p->mmap_list[i] == NULL) {
-        slot = i;
-        break;
-      }
-    }
-    //store mapped addresses in our mmap list
-    p->mmap_list[slot]->start_addr = u_addr;
-    p->mmap_list[slot]->end_addr = u_addr + length;
-    p->mmap_list[slot]->flags = flags;
-    
-    return addr;
+  mem = kalloc(); //call kalloc to allocate memory
+  if(mem == 0) {
+    kfree(mem);
+    cprintf("allocuvm out of memory\n");
+    return (void *)-1;
   }
+  // clear existing data
+  memset(mem, 0, PGSIZE);
 
-  // allocatedRegions[numAllocatedRegions].size = PGSIZE;
-  // allocatedRegions[numAllocatedRegions].start = (void *)mem; // V2P
+  cprintf("%p\n",mem);
+
+  if (mappages(p->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+    kfree(mem);
+    cprintf("mappages\n");
+    return (void *)-1;
+  }
+  
+  //search for an empty slot in mmap list
+  int slot = -1;
+  for (int i =0; i < 32; i++) {
+    if (p->mmap_list[i] == NULL) {
+      slot = i;
+      break;
+    }
+  }
+  //store mapped addresses in our mmap list
+  p->mmap_list[slot]->start_addr = u_addr;
+  p->mmap_list[slot]->end_addr = u_addr + length;
+  p->mmap_list[slot]->flags = flags;
+
   return addr;
 }
+
 
 int munmap(void *addr, size_t length) {
   struct proc *p = myproc();

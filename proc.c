@@ -88,6 +88,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->mmap_free_addr=MMAPBASE;
 
   release(&ptable.lock);
 

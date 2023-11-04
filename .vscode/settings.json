@@ -2,6 +2,10 @@
     "files.associations": {
         "types.h": "c",
         "memlayout.h": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "mmu.h": "c",
+        "array": "c",
+        "deque": "c",
+        "vector": "c"
     }
 }

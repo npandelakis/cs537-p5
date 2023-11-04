@@ -50,6 +50,7 @@ struct proc {
   struct inode *cwd;                     // Current directory
   char name[16];                         // Process name (debugging)
   struct mmap_area *mmap_list[32];       // List of mmap-ed areas for this proc
+  uint mmap_free_addr;                   // Unmapped address to give to a user proc
 };
 
 // Process memory is laid out contiguously, low addresses first:
