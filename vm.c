@@ -414,6 +414,27 @@ int memoryRegionAvailable(int addr, size_t length){
   return 1;
 }
 
+char *kalloc_and_map(void *addr, uint length) {
+  char *mem = kalloc(); //call kalloc to allocate memory
+  if(mem == 0) {
+    kfree(mem);
+    cprintf("allocuvm out of memory\n");
+    return (void *)-1;
+  }
+  // clear existing data
+  memset(mem, 0, PGSIZE);
+  
+  cprintf("%p\n",mem);
+
+  if (mappages(myproc()->pgdir, addr, length, V2P(mem), PTE_W|PTE_U) < 0) {
+    kfree(mem);
+    cprintf("mappages\n");
+    return (void *)-1;
+  }
+
+  return mem;
+}
+
 
 //implementation of mmap
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
@@ -439,7 +460,7 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   }
 
   //No fixed address
-  if ((flags & MAP_FIXED) != 8) {
+  if ((flags & MAP_FIXED) !=  8) {
     cprintf("flags and not fixed\n");
     uint a = p->mmap_free_addr;
     cprintf("mmap base: %p", (void *)a);
@@ -478,24 +499,12 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     return (void *)-1;
   }
 
-  mem = kalloc(); //call kalloc to allocate memory
-  if(mem == 0) {
-    kfree(mem);
-    cprintf("allocuvm out of memory\n");
-    return (void *)-1;
+  //map pages
+  mem = kalloc_and_map(addr, length);
+
+  if (mem == (void *)-1) {
+    return mem;
   }
-  // clear existing data
-  memset(mem, 0, PGSIZE);
-  
-  cprintf("%p\n",mem);
-
-  if (mappages(p->pgdir, addr, length, V2P(mem), PTE_W|PTE_U) < 0) {
-    kfree(mem);
-    cprintf("mappages\n");
-    return (void *)-1;
-  }
-
-
 
   if (fd >= 0) {
     cprintf("fileread\n");

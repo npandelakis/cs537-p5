@@ -7,6 +7,7 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "mmap.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -76,6 +77,33 @@ trap(struct trapframe *tf)
     cprintf("cpu%d: spurious interrupt at %x:%x\n",
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
+    break;
+  case T_PGFLT:
+    // Check myproc()->mmap_list
+    int handled = 0;
+    uint va = rcr2();
+    struct mmap_area *mmapArea;
+    for (int i = 0; i < 32; i ++){
+      mmapArea = myproc()->mmap_list[i];
+      // TODO: Do we need to check above the va?
+      if ((mmapArea->flags & MAP_GROWSUP) == MAP_GROWSUP) {
+        if ((va - mmapArea->end_addr) < PGSIZE) {
+          cprintf("here2\n");
+          // extend mmap
+          if(memoryRegionAvailable(mmapArea->end_addr+PGSIZE,PGSIZE)){
+            cprintf("hello\n");
+            kalloc_and_map((void *)PGROUNDDOWN(va),PGSIZE);
+            mmapArea->end_addr=mmapArea->end_addr+PGSIZE;
+            handled = 1;
+            break;
+          }
+        }
+      }
+    }
+    if (!handled){
+      cprintf("Segmentation Fault\n");
+      myproc()->killed = 1;
+    }
     break;
 
   //PAGEBREAK: 13
