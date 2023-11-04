@@ -577,7 +577,7 @@ int munmap(void *addr, size_t length) {
       cprintf("%p , %p, %d \n",f,mmapArea->fileVA, mmapArea->size);
       // Reset offset to write data to start of file
       f->off = 0;
-      filewrite(mmapArea->f, mmapArea->fileVA, mmapArea->size);
+      filewrite(mmapArea->f, mmapArea->fileVA, length);
     }
   }
   //remove mappings from page table
