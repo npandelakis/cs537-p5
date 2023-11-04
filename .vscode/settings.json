@@ -6,6 +6,14 @@
         "mmu.h": "c",
         "array": "c",
         "deque": "c",
-        "vector": "c"
+        "vector": "c",
+        "fs.h": "c",
+        "*.tcc": "c",
+        "iosfwd": "c",
+        "istream": "c",
+        "limits": "c",
+        "sstream": "c",
+        "stop_token": "c",
+        "streambuf": "c"
     }
 }

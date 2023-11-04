@@ -63,7 +63,11 @@ struct proc {
 typedef struct mmap_area {
   uint start_addr;
   uint end_addr;
+  int size;
   int flags;
+  int fd;
+  struct file *f;
+  void * fileVA;
 } mmap_area;
 
 // Mmap free list for virtual pages for user proc - linked list

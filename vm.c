@@ -10,6 +10,12 @@
 #include "sys/types.h"
 #include "mmap.h"
 
+// TODO: Clean up maybe?
+#include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+
 #define MAX_REGIONS 10
 
 extern char data[];  // defined by kernel.ld
@@ -414,13 +420,25 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   struct proc *p = myproc();
   char * mem;
   uint u_addr = (uint) addr;
-  
-  // Verify Page alignment
-  if (u_addr % PGSIZE != 0) {
-    return (void *)-1;
-  }
+  struct file *f = p->ofile[fd];
 
   cprintf("FLAGS: %d\n",flags);
+
+  //check valid fd
+  if (fd >= 0) {
+    if (!p->ofile[fd]) {
+      cprintf("file desecriptor\n");
+      return (void *) -1;
+    }
+    ilock(f->ip);
+    if (f->ip->size > PGROUNDUP(length)) {
+      cprintf("file length\n");
+      return (void *) -1;
+    }
+    iunlock(f->ip);
+  }
+
+  //No fixed address
   if ((flags & MAP_FIXED) != 8) {
     cprintf("flags and not fixed\n");
     uint a = p->mmap_free_addr;
@@ -450,6 +468,11 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     return (void *)-1;
   }
 
+  // Verify Page alignment
+  if (u_addr % PGSIZE != 0) {
+    return (void *)-1;
+  }
+
   if (!memoryRegionAvailable(u_addr, length)){
     cprintf("memory region\n");
     return (void *)-1;
@@ -463,15 +486,27 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   }
   // clear existing data
   memset(mem, 0, PGSIZE);
-
+  
   cprintf("%p\n",mem);
 
-  if (mappages(p->pgdir, addr, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+  if (mappages(p->pgdir, addr, length, V2P(mem), PTE_W|PTE_U) < 0) {
     kfree(mem);
     cprintf("mappages\n");
     return (void *)-1;
   }
-  
+
+
+
+  if (fd >= 0) {
+    cprintf("fileread\n");
+    cprintf("f: %p\n", f);
+    cprintf("fd: %d\n", fd);
+    cprintf("mem: %p\n", (void *)mem);
+    if (fileread(f, mem, length) < 0) {
+      return (void *) -1;
+    }
+  }
+
   //search for an empty slot in mmap list
   int slot = -1;
   for (int i =0; i < 32; i++) {
@@ -483,7 +518,11 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   //store mapped addresses in our mmap list
   p->mmap_list[slot]->start_addr = u_addr;
   p->mmap_list[slot]->end_addr = u_addr + length;
+  p->mmap_list[slot]->size = length;
   p->mmap_list[slot]->flags = flags;
+  p->mmap_list[slot]->fd = fd;
+  p->mmap_list[slot]->fileVA = mem;
+  p->mmap_list[slot]->f = f;
 
   return addr;
 }
@@ -522,6 +561,15 @@ int munmap(void *addr, size_t length) {
   //check flags and MAP_SHARED
   if (mmapArea->flags & MAP_SHARED) {
     //stuff
+    if (mmapArea->fd >= 0) {
+      cprintf("filewrite\n");
+      struct file *f = p->ofile[mmapArea->fd];
+      //char *addr = uva2ka(p->pgdir, (void *) mmapArea->start_addr);
+      cprintf("%p , %p, %d \n",f,mmapArea->fileVA, mmapArea->size);
+      // Reset offset to write data to start of file
+      f->off = 0;
+      filewrite(mmapArea->f, mmapArea->fileVA, mmapArea->size);
+    }
   }
   //remove mappings from page table
   pte_t *pte;
@@ -539,9 +587,14 @@ int munmap(void *addr, size_t length) {
   }
 
   //clear mmapArea and mmap_list of addr
-  mmapArea->start_addr = 0;
-  mmapArea->end_addr = 0;
+  if(mmapArea->start_addr+PGROUNDUP(length) >= mmapArea->end_addr){ //if length is >= mapped address range, clear start and end
+    mmapArea->start_addr = 0;
+    mmapArea->end_addr = 0; 
+  } else {
+    mmapArea->start_addr= mmapArea->start_addr + PGROUNDUP(length); //else we just need to reset the start addr
+  }
   mmapArea->flags = 0;
+  mmapArea->fd = 0;
   p->mmap_list[i] = 0;
 
   return 0;
