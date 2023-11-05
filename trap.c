@@ -84,7 +84,7 @@ trap(struct trapframe *tf)
     uint va = rcr2();
     struct mmap_area *mmapArea;
     for (int i = 0; i < 32; i ++){
-      mmapArea = myproc()->mmap_list[i];
+      mmapArea = &myproc()->mmap_list[i];
       // TODO: Do we need to check above the va?
       if ((mmapArea->flags & MAP_GROWSUP) == MAP_GROWSUP) {
         if ((va - mmapArea->end_addr) < PGSIZE) {

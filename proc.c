@@ -88,10 +88,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  p->mmap_free_addr=MMAPBASE;
-  // for(int i = 0; i < 32; i++) {
-  //   p->mmap_list[i]->valid = 0;
-  // }
+  p->mmap_free_addr=-1;
 
   release(&ptable.lock);
 
@@ -155,6 +152,8 @@ userinit(void)
   p->state = RUNNABLE;
 
   release(&ptable.lock);
+
+
 }
 
 // Grow current process's memory by n bytes.
@@ -224,23 +223,24 @@ fork(void)
   release(&ptable.lock);
 
   //copy mappings from parent to child
-  for(int i = 0; i < 32; i++) {
-    if(curproc->mmap_list[i]->valid == 1) {
-      if (copy_mmap_pgdir(np->pgdir, curproc->mmap_list[i]) < 0) {
-        return -1;
-      }
+  if (curproc->mmap_free_addr != -1) {
+    for(int i = 0; i < 32; i++) {
+      if(curproc->mmap_list[i].valid == 1) {
+        if (copy_mmap_pgdir(np->pgdir, &(curproc->mmap_list[i])) < 0) {
+          return -1;
+        }
 
-      np->mmap_list[i]->start_addr = curproc->mmap_list[i]->start_addr;
-      np->mmap_list[i]->end_addr = curproc->mmap_list[i]->end_addr;
-      np->mmap_list[i]->size = curproc->mmap_list[i]->size;
-      np->mmap_list[i]->flags = curproc->mmap_list[i]->flags;
-      np->mmap_list[i]->fd = curproc->mmap_list[i]->fd;
-      np->mmap_list[i]->f = curproc->mmap_list[i]->f;
-      np->mmap_list[i]->fileVA = curproc->mmap_list[i]->fileVA;
-    } 
-
-    
+        np->mmap_list[i].start_addr = curproc->mmap_list[i].start_addr;
+        np->mmap_list[i].end_addr = curproc->mmap_list[i].end_addr;
+        np->mmap_list[i].size = curproc->mmap_list[i].size;
+        np->mmap_list[i].flags = curproc->mmap_list[i].flags;
+        np->mmap_list[i].fd = curproc->mmap_list[i].fd;
+        np->mmap_list[i].f = curproc->mmap_list[i].f;
+        np->mmap_list[i].fileVA = curproc->mmap_list[i].fileVA;
+      }   
+    }
   }
+  
   return pid;
 }
 

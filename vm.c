@@ -7,7 +7,6 @@
 #include "proc.h"
 #include "elf.h"
 #include "stddef.h"
-#include "sys/types.h"
 #include "mmap.h"
 
 // TODO: Clean up maybe?
@@ -343,6 +342,7 @@ copyuvm(pde_t *pgdir, uint sz)
     if((mem = kalloc()) == 0)
       goto bad;
     memmove(mem, (char*)P2V(pa), PGSIZE);
+    cprintf("PGRDDWN: %p\n", (char*)PGROUNDDOWN((uint)i));
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       goto bad;
@@ -365,12 +365,13 @@ copy_mmap_pgdir(pde_t *pgdir, struct mmap_area *mmapArea) {
       panic("copy_mmap_pgdr: pte should exist");
     }
     if ((mmapArea->flags & MAP_SHARED) == MAP_SHARED) {
-      cprintf("map shared");
+      cprintf("map shared: %p\n", (char*)PGROUNDDOWN((uint)i));
       if(mappages(pgdir, (void*)i, PGSIZE, PTE_ADDR(*pte), PTE_W|PTE_U) < 0) {
         panic("mappages shared");
       }
+      return 0;
     } else {
-      cprintf("map shared");
+      cprintf("map private\n");
       if(!(*pte & PTE_P))
       panic("copy_mmap_pgdr: page not present");
       uint pa = PTE_ADDR(*pte);
@@ -383,7 +384,7 @@ copy_mmap_pgdir(pde_t *pgdir, struct mmap_area *mmapArea) {
         kfree(mem);
         goto bad;
       }
-      
+      return 0;
     }
   }
   bad:
@@ -482,15 +483,15 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 int memoryRegionAvailable(int addr, size_t length){
   struct proc *p = myproc();
   for (int i = 0; i < 32; i ++){
-    if (p->mmap_list[i]->valid == 0) {
+    if (p->mmap_list[i].valid == 0) {
       continue;
     }
     //check if beginning of requested address is within an allocated region
-    if (addr >=p->mmap_list[i]->start_addr && addr < p->mmap_list[i]->end_addr) {
+    if (addr >=p->mmap_list[i].start_addr && addr < p->mmap_list[i].end_addr) {
       return 0; //not available
     }
     // //check if end of requested address is within an allocated region
-    if (addr + length > p->mmap_list[i]->start_addr && addr + length <= p->mmap_list[i]->end_addr) {
+    if (addr + length > p->mmap_list[i].start_addr && addr + length <= p->mmap_list[i].end_addr) {
       return 0; //not availabe
     }
   }
@@ -500,15 +501,15 @@ int memoryRegionAvailable(int addr, size_t length){
 int getMemoryRegion(int addr, size_t length) {
   struct proc *p = myproc();
   for (int i = 0; i < 32; i ++){
-    if (p->mmap_list[i]->valid == 0) {
+    if (p->mmap_list[i].valid == 0) {
       continue;
     }
     //check if beginning of requested address is within an allocated region
-    if (addr >=p->mmap_list[i]->start_addr && addr < p->mmap_list[i]->end_addr) {
+    if (addr >=p->mmap_list[i].start_addr && addr < p->mmap_list[i].end_addr) {
       return i; 
     }
     // //check if end of requested address is within an allocated region
-    if (addr + length > p->mmap_list[i]->start_addr && addr + length <= p->mmap_list[i]->end_addr) {
+    if (addr + length > p->mmap_list[i].start_addr && addr + length <= p->mmap_list[i].end_addr) {
       return i; 
     }
   }
@@ -538,13 +539,21 @@ char *kalloc_and_map(void *addr, uint length) {
 
 
 //implementation of mmap
-void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, int offset) {
   struct proc *p = myproc();
   char * mem;
   uint u_addr = (uint) addr;
   struct file *f = p->ofile[fd];
 
   cprintf("FLAGS: %d\n",flags);
+
+  // first mmap call, set up data structure
+  if (p->mmap_free_addr == -1) {
+    p->mmap_free_addr = MMAPBASE;
+    for (int i =0; i < 32; i++) {
+      p->mmap_list[i].valid = 0;
+    }
+  }
 
   //check valid fd
   if (fd >= 0) {
@@ -620,20 +629,23 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
   //search for an empty slot in mmap list
   int slot = -1;
   for (int i =0; i < 32; i++) {
-    if (p->mmap_list[i]->valid != 1) {
+    if (p->mmap_list[i].valid != 1) {
       slot = i;
       break;
     }
   }
+
   //store mapped addresses in our mmap list
-  p->mmap_list[slot]->valid = 1;
-  p->mmap_list[slot]->start_addr = u_addr;
-  p->mmap_list[slot]->end_addr = u_addr + length;
-  p->mmap_list[slot]->size = length;
-  p->mmap_list[slot]->flags = flags;
-  p->mmap_list[slot]->fd = fd;
-  p->mmap_list[slot]->fileVA = mem;
-  p->mmap_list[slot]->f = f;
+  cprintf("valid = 1 here\n");
+  struct mmap_area *mmapArea = &p->mmap_list[slot];
+  mmapArea->valid = 1;
+  mmapArea->start_addr = u_addr;
+  mmapArea->end_addr = u_addr + length;
+  mmapArea->size = length;
+  mmapArea->flags = flags;
+  mmapArea->fd = fd;
+  mmapArea->fileVA = mem;
+  mmapArea->f = f;
 
   return addr;
 }
@@ -657,9 +669,9 @@ int munmap(void *addr, size_t length) {
   struct mmap_area *mmapArea = (void *) -1;
   int i;
   for (i=0; i<32; i++){
-    if (p->mmap_list[i]->start_addr == u_addr && 
-        p->mmap_list[i]->end_addr >= u_addr + length) {
-          mmapArea = p->mmap_list[i];
+    if (p->mmap_list[i].start_addr == u_addr && 
+        p->mmap_list[i].end_addr >= u_addr + length) {
+          mmapArea = &p->mmap_list[i];
           break;
         }
   }
@@ -706,7 +718,7 @@ int munmap(void *addr, size_t length) {
   }
   mmapArea->flags = 0;
   mmapArea->fd = 0;
-  p->mmap_list[i]->valid = 0;
+  p->mmap_list[i].valid = 0;
 
   return 0;
 }

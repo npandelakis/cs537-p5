@@ -16,7 +16,6 @@
 #include "file.h"
 #include "fcntl.h"
 #include "stddef.h"
-#include "sys/types.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -453,7 +452,7 @@ sys_mmap(void)
   int prot;
   int flags;
   int fd;
-  off_t offset;
+  int offset;
 
   if (argint(0, (void*)&addr) < 0 ||
       argint(1, (int*)&length) < 0 ||

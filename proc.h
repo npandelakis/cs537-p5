@@ -34,6 +34,19 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+
+// Info for an mmap area
+struct mmap_area {
+  int valid;
+  uint start_addr;
+  uint end_addr;
+  int size;
+  int flags;
+  int fd;
+  struct file *f;
+  void * fileVA;
+};
+
 // Per-process state
 struct proc {
   uint sz;                               // Size of process memory (bytes)
@@ -49,7 +62,7 @@ struct proc {
   struct file *ofile[NOFILE];            // Open files
   struct inode *cwd;                     // Current directory
   char name[16];                         // Process name (debugging)
-  struct mmap_area *mmap_list[32];       // List of mmap-ed areas for this proc
+  struct mmap_area mmap_list[32];       // List of mmap-ed areas for this proc
   uint mmap_free_addr;                   // Unmapped address to give to a user proc
 };
 
@@ -59,17 +72,7 @@ struct proc {
 //   fixed-size stack
 //   expandable heap
 
-// Info for an mmap area
-typedef struct mmap_area {
-  int valid;
-  uint start_addr;
-  uint end_addr;
-  int size;
-  int flags;
-  int fd;
-  struct file *f;
-  void * fileVA;
-} mmap_area;
+
 
 // Mmap free list for virtual pages for user proc - linked list
 // Keep track of:

@@ -1,5 +1,5 @@
 #include "stddef.h"
-#include "sys/types.h"
+#include "types.h"
 
 struct buf;
 struct context;
@@ -194,7 +194,7 @@ int             memoryRegionAvailable(int addr, size_t length);
 int             getMemoryRegion(int addr, size_t length);
 void            addAllocatedRegion(void * addr, size_t length);
 char *          kalloc_and_map(void *addr, uint length);
-void *          mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+void *          mmap(void *addr, size_t length, int prot, int flags, int fd, int offset);
 int             munmap(void *addr, size_t length);
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

@@ -15,6 +15,7 @@
         "sstream": "c",
         "stop_token": "c",
         "streambuf": "c",
-        "defs.h": "c"
+        "defs.h": "c",
+        "syscall.h": "c"
     }
 }
